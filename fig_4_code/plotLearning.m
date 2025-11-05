@@ -1,0 +1,364 @@
+function [X1,X2,gg, f1, f2] = plotLearning(times, states)
+% Plot learning in the Van der Pol oscillator
+
+global W_test mu N C b opt_base lambda; 
+
+% Plot teacher and student trajectories in phase space:
+figure(3); hold on;
+plot(states(:,1), states(:,2), 'm'); hold on;
+plot(states(:,3), states(:,4), 'r'); hold on;
+xlabel('$z$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+title('Instructor and student (learning)');
+set(gca,'color','none');
+legend('Instructor', 'RNN', 'Interpreter', 'latex');
+box on;
+
+
+% Plot teacher and student trajectories in time:
+figure(4); hold on; 
+subplot(2,1,1);
+plot(times, states(:,1), 'm'); hold on;
+plot(times, states(:,3), 'r'); hold on;
+xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$z,x_1$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+legend('Instructor', 'RNN', 'Interpreter', 'latex');
+box on;
+
+subplot(2,1,2);
+plot(times, states(:,2), 'm'); hold on;
+plot(times, states(:,4), 'r'); hold on;
+xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$\dot{z},x_2$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+legend('Instructor', 'RNN', 'Interpreter', 'latex');
+box on;
+
+% Plot evolution of the weights [check stationarity]:
+figure(5); hold on; 
+plot(times, states(:,5:end)); hold on;
+xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$W$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+title('Weights (evolution during learning)');
+box on;
+
+% Plot the norm of the weights (check stationarity):
+figure(6); 
+
+% Plot the absolute norm:
+subplot(2,1,1); hold on; 
+plot(times, vecnorm(states(:,5:end)'),'lineWidth', 2); hold on;
+xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$||W||_F$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+box on;
+title('Weights norm (evolution during learning)');
+
+% Plot relative norm between timesteps, normalized by size of the weights:
+subplot(2,1,2); hold on; 
+W_time_diffs                = states(2:end,5:end) - states(1:end-1,5:end);
+W_time_diffs_norm           = vecnorm(W_time_diffs'); % Frobenious norm of \Delta_t W at each time instant.
+W_time_diff_norm_normalized = W_time_diffs_norm./vecnorm(states(2:end,5:end)');
+
+plot(times(1:end-1), W_time_diff_norm_normalized,'lineWidth', 2); hold on;
+box on;
+xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+ylabel('$||W_{t+1}-W_t||_F/||W_{t+1}||_F$', 'Interpreter', 'latex','FontSize', 20); 
+set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+set(gca, 'YScale', 'log');
+
+
+
+
+% Plot alpha (of the dual formulation):
+error       = (states(:,1:2)-states(:,3:4));
+alpha       = C'*error'; % recall that at each time-point, alpha is a L-dimensional vector
+
+    %plot alpha in time:
+    figure(7); hold on;
+    subplot(2,1,1)
+    plot(times, alpha, 'lineWidth', 2); hold on;
+    box on;
+    xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+    ylabel('$\alpha$ (dual formulation)', 'Interpreter', 'latex','FontSize', 20); 
+    set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+
+    subplot(2,1,2)
+    %figure;
+    plot(times, vecnorm(alpha), 'lineWidth', 2); hold on;
+    box on;
+    xlabel('$t$', 'Interpreter', 'latex','FontSize', 20); 
+    ylabel('$\|\alpha\|$ (dual formulation)', 'Interpreter', 'latex','FontSize', 20); 
+    set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+
+    % plot alpha modulus in the error's state-space, colored according to
+    % magnitude:
+    figure(8); hold on; 
+    sp = scatter(error(:,1),error(:,2),50,vecnorm(alpha),"filled");
+    box on;
+    m  = sp.Marker;
+    sp.Marker = 's';
+    cc = colorbar;
+    cc.TickLabelInterpreter = 'latex';
+    set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+    xlabel('$e_1$', 'Interpreter', 'latex','FontSize', 20);  
+    ylabel('$e_2$', 'Interpreter', 'latex','FontSize', 20); 
+
+    %create histogram of the tracking errors: shows which error values are
+    %visited more often while training
+
+    figure(9);
+    histogram2(error(:,1), error(:,2));
+    box on;
+    cc = colorbar;
+    cc.TickLabelInterpreter = 'latex';
+    set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+    xlabel('$e_1$', 'Interpreter', 'latex','FontSize', 20);  
+    ylabel('$e_2$', 'Interpreter', 'latex','FontSize', 20); 
+
+
+% Compare the learnt vector field to the true vector field:
+
+    % get mesh/gridpoints where to evaluate:
+     [X1,X2] = meshgrid(-2:0.1:2,-4:0.1:4);
+
+    % Compute actual vector field (instructor's):
+     f1     = X2;
+     f2     = -mu*(X1.^2 - 1).*X2 - X1; 
+
+    % Compute learnt vector field (student, after learning):
+
+    % evaluate the basis functions at the gridpoints:
+    Phi_evaluated = NaN(size(X1,1), size(X1,2), N);
+    Phi1            = NaN(size(X1,1), size(X1,2));
+    Phi2            = NaN(size(X1,1), size(X1,2));
+
+    for ii = 1:size(X1,1)
+        for jj = 1:size(X1, 2)
+            Phi_evaluated(ii,jj,:) = evaluateBasis(X1(ii,jj), X2(ii,jj));
+            Phi1(ii,jj) = C(1,:)*W_test'*squeeze(Phi_evaluated(ii,jj,:));
+            Phi2(ii,jj) = C(2,:)*W_test'*squeeze(Phi_evaluated(ii,jj,:));
+        end
+    end
+
+    % compute the learnt vector field at the grid points:
+    if opt_base == 0
+        gg      = -lambda*[X1; X2] + [Phi1; Phi2];
+    elseif opt_base == 1
+        gg      = [-(1/8)*(X1+X2).^3 + b*X2; -(1/8)*(X1+X2).^3 + b*X1] + [Phi1; Phi2];
+    end
+
+
+    %Compare actual and learnt vector fields in 3D:
+        figure(10); 
+
+        % Plot actual:
+        subplot(3,2,1);
+        pic11 = surf(X1, X2, f1); hold on;
+        set(pic11,'edgecolor','none'); 
+        xlabel('$z$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$f_1(z, \dot{z}) = \dot{z}$', 'Interpreter', 'latex','FontSize', 10 );
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        c1 = colorbar;
+        c1.TickLabelInterpreter = 'latex';
+
+        subplot(3,2,2);
+        pic12 = surf(X1, X2, f2); hold on;
+        set(pic12,'edgecolor','none'); 
+        xlabel('$z$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$f_2(z, \dot{z}) = -\mu(z^2-1)\dot{z} - z$', 'Interpreter', 'latex','FontSize', 10 );
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        c2 = colorbar;
+        c2.TickLabelInterpreter = 'latex';
+
+        % Plot learnt:
+        subplot(3,2,3);
+        pic21 = surf(X1, X2, gg(1:end/2,:) ); hold on;
+        set(pic21,'edgecolor','none'); 
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$g_1(x_1, x_2)$', 'Interpreter', 'latex','FontSize', 10 );
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        c3 = colorbar;
+        c3.TickLabelInterpreter = 'latex';
+
+        subplot(3,2,4);
+        pic22 = surf(X1, X2, gg(end/2+1:end,:) ); hold on;
+        set(pic22,'edgecolor','none'); 
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$g_2(x_1, x_2)$', 'Interpreter', 'latex','FontSize', 10 );
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        c4 = colorbar;
+        c4.TickLabelInterpreter = 'latex';
+
+        % Plot error between actual and learnt vector fields:
+        subplot(3,2,5);
+        pic31 = surf(X1, X2, f1-gg(1:end/2,:)); hold on;
+        set(pic31,'edgecolor','none'); hold on;
+        xlabel('$z$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$e_1 = f_1 - g_1$', 'Interpreter', 'latex','FontSize', 10);
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        c5 = colorbar;
+        c5.TickLabelInterpreter = 'latex';
+        plot3(states(:,1), states(:,2), 2*ones(size(states,1),1), 'r', 'LineWidth',2);
+
+        subplot(3,2,6);
+        pic32 = surf(X1, X2, f2-gg(end/2+1:end,:)); hold on;
+        set(pic32,'edgecolor','none'); 
+        xlabel('$z$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 10); 
+        zlabel('$e_2 = f_2 - g_2$', 'Interpreter', 'latex','FontSize', 10);
+        box on;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        colorbar
+        plot3(states(:,1), states(:,2), 2*ones(size(states,1),1), 'r', 'LineWidth',2);
+
+
+    % Compare actual and learnt vector fields in quiver plot:
+        
+        % plot true flow field:
+        figure(11); hold on;
+        imagesc([X1(1,1) X1(1,end)], [X2(end,1) X2(1,1)] , sqrt(f1.^2 + f2.^2)); hold on;
+        plot(states(:,1), states(:,2), 'w', 'lineWidth', 2); hold on;
+        quiver(X1(1:5:end,1:5:end), X2(1:5:end,1:5:end), f1(1:5:end,1:5:end), f2(1:5:end,1:5:end), 4, 'Color', 'w', 'lineWidth', 2); hold on;
+        plot(0,0,'o', 'MarkerEdgeColor', 'r', 'MarkerFaceColor', 'r'); hold on;
+        ylabel('$\dot{z}$', 'Interpreter', 'latex','FontSize', 10); 
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        set(gca,'YDir','normal');
+        xlim([-2 2]); ylim([-4 4]);
+        c = colorbar;
+        c.Label.Interpreter = 'latex';
+        box on;
+
+        % plot learnt:
+        figure(12); hold on;
+        imagesc([X1(1,1) X1(1,end)], [X2(1,1) X2(end,1)], sqrt(gg(1:end/2,:).^2 + gg(end/2+1:end,:).^2)); hold on;
+        plot(states(:,3), states(:,4), 'w', 'lineWidth', 2); hold on;
+        c = colorbar;
+         c.Label.Interpreter = 'latex';
+        quiver(X1(1:5:end,1:5:end), X2(1:5:end,1:5:end), gg(1:5:end/2,1:5:end), gg(end/2+1:5:end,1:5:end),4, 'Color', 'w', 'lineWidth', 2); hold on;
+        %,'MakerEdgeColor','w', 'MarkerFaceColor','w', 'MarkerSize', 4); hold on;
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10);
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        % axis equal tight;
+        set(gca,'YDir','normal');
+         xlim([-2 2]); ylim([-4 4]);
+
+        % plot error between the two:
+        %subplot(1,3,3);
+        figure(13); hold on;
+        imagesc( [X1(1,1) X1(1,end)], [X2(1,1) X2(end,1)], sqrt((f1-gg(1:end/2,:)).^2 + (f2-gg(end/2+1:end,:)).^2) ); hold on;
+        % axis equal tight;
+        plot(states(:,1), states(:,2), 'w', 'lineWidth', 2); hold on;
+        c= colorbar;
+        c.Label.Interpreter = 'latex';
+        quiver(X1, X2, f1-gg(1:end/2,:), f2- gg(end/2+1:end,:), 'Color', 'w');
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10); 
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10); 
+        title('$\mathbf{e}:= \mathbf{f}-\mathbf{g}$', 'Interpreter','latex');
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        set(gca,'YDir','normal');
+        xlim([-2 2]); ylim([-4 4]);
+
+        %alpha in state-space (against RNN's state):
+        figure(14); hold on; 
+
+        % plot alpha modulus in the learner's state-space, colored according to
+        % magnitude:
+
+        sp2 = scatter(states(:,3),states(:,4),50,vecnorm(alpha),"filled");
+        m  = sp2.Marker;
+        sp2.Marker = 's';
+        colorbar;
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10);  
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10); 
+        box on;
+
+        % Histogram of the visited student states
+        figure(15); 
+        histogram2(states(:,3), states(:,4));
+        cp = colorbar;
+        cp.TickLabelInterpreter = 'latex';
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 10);
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 10);  
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 10); 
+
+        % Make alpha histogram in x-space:
+
+        % Start by defining a grid (bin locations) in state space and classifying alpha
+        % accordingly:
+        delta_x1 = .05;
+        delta_x2 = .05;
+
+        grid_x1  = -5:delta_x1:5;
+        grid_x2  = -5:delta_x2:5;
+
+        alpha_matrix = zeros(length(grid_x1), length(grid_x2), size(alpha,1));
+
+        for tt =1:length(times)
+            global ii_aux jj_aux;
+
+            for ii = 1:length(grid_x1)-1
+               
+                if states(tt,3)>=grid_x1(ii) && states(tt,3)<grid_x1(ii+1)
+                    ii_aux = ii;
+                    break;
+                end
+
+            end
+
+            for jj =1:length(grid_x2)-1
+
+                if states(tt,4)>=grid_x2(jj) && states(tt,4)<grid_x2(jj+1)
+                    jj_aux = jj;
+                    break;
+                end
+            end
+
+
+            for zz=1:size(alpha,1)
+                alpha_matrix(ii_aux, jj_aux,zz) =  alpha_matrix(ii_aux, jj_aux,zz) + alpha(zz,tt);
+            end
+            clear ii_aux jj_aux;
+        end
+        
+        % compute the norm of each entry of the alpha matrix:
+        
+        alpha_matrix_norm = NaN(size(alpha_matrix,1), size(alpha_matrix,2));
+
+        for ii =1:size(alpha_matrix,1)
+            for jj=1:size(alpha_matrix,2)
+
+                alpha_matrix_norm(ii,jj) = sqrt(sum(alpha_matrix(ii,jj,:).^2));
+
+            end
+        end
+
+
+        % plot it:
+        figure;
+        imagesc(grid_x1, grid_x2, alpha_matrix_norm'); hold on;
+        set(gca,'YDir','normal');
+        xlim([-2.5 2.5]); ylim([-4 4]);
+        cp = colorbar;
+        cp.TickLabelInterpreter = 'latex';
+        set(gca,'TickLabelInterpreter','latex', 'FontSize', 20);
+        xlabel('$x_1$', 'Interpreter', 'latex','FontSize', 20);  
+        ylabel('$x_2$', 'Interpreter', 'latex','FontSize', 20); 
+
+
+end
