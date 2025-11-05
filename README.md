@@ -2,6 +2,8 @@ Code for Pang, Arbelaiz, Pillow 2025. "Learning neural dynamics through instruct
 
 Requirements for Python code: Python 3.9, matplotlib, numpy, scipy, pandas, jupyter, pytorch (cpu)
 
+There are several notebooks for auxiliary/supporting analyses, but which did not directly produce any figures in the manuscript. The notebook associated with each specific figure panel in the manuscript is given below.
+
 ## Figure key
 
 1a-d: Schematics
@@ -46,7 +48,7 @@ S1c, left and middle column: Notebook 2D
 
 S1c, right column: Notebook 2E
 
-S2a-b: Notebook 3A1
+S2a-b: Notebook 2C
 
 S2c-d: Notebook 2B
 
