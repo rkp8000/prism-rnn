@@ -1,6 +1,6 @@
 Code for Pang, Arbelaiz, Pillow 2025. "Learning neural dynamics through instructive signals"
 
-Tested on: Python 3.7, matplotlib 3.10.0, numpy 2.1.3, scipy 1.14.1, pandas 2.3.2, scikit-learn 1.6.1, jupyterlab 4.2.5 ipykernel 6.29.5, torch 2.6.0+cu124, and MATLAB version R2025a. Note that no GPU or CUDA installation is required for our instructor training examples.
+Tested on: Python 3.12.8, matplotlib 3.10.0, numpy 2.1.3, scipy 1.14.1, pandas 2.3.2, scikit-learn 1.6.1, jupyterlab 4.2.5 ipykernel 6.29.5, torch 2.6.0+cu124, and MATLAB version R2025a. Note that no GPU or CUDA installation is required for our instructor training examples.
 
 Install automatically via `pip install -r requirements.txt'.
 
